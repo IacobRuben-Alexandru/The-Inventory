@@ -7,7 +7,7 @@ app = FastAPI()
 
 def runApp():
     # Routes
-    from api.routes import aplication
+    from api.routes import application
 
     app.add_middleware(
         CORSMiddleware,

@@ -15,7 +15,7 @@ def initConnection() -> None:
     global connection, base, session
 
     from models.Warehouse import Warehouses
-    
+    from models.Supplier import Suppliers
 
     if config.debug:
         print("[DEBUG]: Initializing connection...")
