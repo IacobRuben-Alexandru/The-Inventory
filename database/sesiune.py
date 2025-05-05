@@ -16,6 +16,7 @@ def initConnection() -> None:
 
     from models.Warehouse import Warehouses
     from models.Supplier import Suppliers
+    from models.Product import Products
 
     if config.debug:
         print("[DEBUG]: Initializing connection...")
