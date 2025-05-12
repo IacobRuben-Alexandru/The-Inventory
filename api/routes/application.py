@@ -432,3 +432,136 @@ async def delete_product(warehouseId: str, product_id: str):
     sesiune.commit()
 
     return {"message": "Product deleted successfully"}
+
+#Stock Management
+@app.get("/api/warehouses/{warehouseId}/inventory")
+async def get_stock_all(warehouseId: str, page: int = 1, page_size: int = 10):
+    sesiune = db.getSession()
+    products = (
+        sesiune.query(Products)
+        .filter_by(warehouseId=warehouseId)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    result = [
+        {
+            "id": product.id,
+            "sku": product.sku,
+            "stockQuantity": product.stockQuantity
+        }
+        for product in products
+    ]
+
+    return result
+
+@app.get("/api/warehouses/{warehouseId}/inventory/{product_id}")
+async def get_stock(warehouseId: str, product_id: str):
+    sesiune = db.getSession()
+    product = sesiune.query(Products).filter_by(id=product_id, warehouseId=warehouseId).first()
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found.")
+
+    return {
+        "id": product.id,
+        "sku": product.sku,
+        "stockQuantity": product.stockQuantity
+    }
+
+class IncreaseStockRequest(BaseModel):
+    quantity: int
+    supplierId: str
+
+@app.post("/api/warehouses/{warehouseId}/inventory/{product_id}/increase")
+async def increase_stock(
+    warehouseId: str,
+    product_id: str,
+    payload: IncreaseStockRequest,
+):
+    sesiune = db.getSession()
+    product = sesiune.query(Products).filter_by(id=product_id, warehouseId=warehouseId).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found.")
+
+    supplier = sesiune.query(Suppliers).filter_by(id=payload.supplierId).first()
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found.")
+
+    if hasattr(product, "supplierId") and product.supplierId != payload.supplierId:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Product is not associated with supplier {payload.supplierId}"
+        )
+
+    product.stockQuantity += payload.quantity
+    sesiune.commit()
+    sesiune.refresh(product)
+
+    return {
+        "message": "Stock increased successfully",
+        "newStockQuantity": product.stockQuantity
+    }
+
+class DecreaseStockRequest(BaseModel):
+    quantity: int
+    reason: str
+
+@app.post("/api/warehouses/{warehouseId}/inventory/{product_id}/decrease")
+async def increase_stock(
+    warehouseId: str,
+    product_id: str,
+    payload: DecreaseStockRequest,
+):
+    sesiune = db.getSession()
+    product = sesiune.query(Products).filter_by(id=product_id, warehouseId=warehouseId).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found.")
+
+
+    product.stockQuantity -= payload.quantity
+    sesiune.commit()
+    sesiune.refresh(product)
+
+    return {
+        "message": "Stock decreased successfully",
+        "newStockQuantity": product.stockQuantity
+    }
+
+class TransferStockRequest(BaseModel):
+    quantity: int
+    targetWarehouseId: str
+    reason: str
+@app.post("/api/warehouses/{warehouseId}/inventory/{product_id}/transfer")
+async def transfer_stock(
+    warehouseId: str,
+    product_id: str,
+    payload: TransferStockRequest,  
+):
+    sesiune = db.getSession()
+    if payload.quantity <= 0:
+        raise HTTPException(status_code=400, detail="Quantity must be greater than zero.")
+
+    source_product = sesiune.query(Products).filter_by(id=product_id, warehouseId=warehouseId).first()
+    if not source_product:
+        raise HTTPException(status_code=404, detail="Source product not found.")
+
+    if source_product.stockQuantity < payload.quantity:
+        raise HTTPException(status_code=400, detail="Insufficient stock in source warehouse.")
+
+    target_product = sesiune.query(Products).filter_by(id=product_id, warehouseId=payload.targetWarehouseId).first()
+    if not target_product:
+        raise HTTPException(status_code=404, detail="Product not found in destination warehouse.")
+
+    source_product.stockQuantity -= payload.quantity
+    target_product.stockQuantity += payload.quantity
+
+    sesiune.commit()
+    sesiune.refresh(source_product)
+    sesiune.refresh(target_product)
+
+    return {
+        "message": "Stock transferred successfully",
+        "newStockQuantity": target_product.stockQuantity
+    }
